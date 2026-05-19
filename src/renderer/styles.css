@@ -596,6 +596,219 @@ body {
   background: var(--primary-color);
 }
 
+/* Settings Button */
+.settings-btn {
+  background: var(--background-card);
+  border: none;
+  padding: 10px 15px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-size: 1.2rem;
+  margin-left: auto;
+  transition: background 0.2s;
+}
+
+.settings-btn:hover {
+  background: var(--secondary-color);
+}
+
+/* Settings Modal */
+.settings-modal {
+  max-width: 500px;
+  text-align: left;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--background-light);
+}
+
+.modal-header h2 {
+  color: var(--accent-color);
+}
+
+.close-modal {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 28px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.close-modal:hover {
+  color: var(--primary-color);
+}
+
+.settings-content {
+  padding: 10px 0;
+}
+
+.setting-group h3 {
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.setting-description {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.setting-label {
+  color: var(--text-primary);
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 26px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--background-light);
+  transition: 0.3s;
+  border-radius: 26px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: var(--success-color);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(24px);
+}
+
+/* API Key Section */
+.api-key-section {
+  flex-direction: column;
+  align-items: flex-start !important;
+  gap: 8px !important;
+}
+
+.api-key-section label {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.api-key-input-wrapper {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.api-key-input {
+  flex: 1;
+  padding: 12px 15px;
+  border: 2px solid var(--background-light);
+  border-radius: 8px;
+  background: var(--background-dark);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.api-key-input:focus {
+  outline: none;
+  border-color: var(--secondary-color);
+}
+
+.btn-small {
+  padding: 10px 15px;
+  font-size: 0.85rem;
+}
+
+.setting-hint {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+.setting-hint.success {
+  color: var(--success-color);
+}
+
+/* Processing Badge */
+.processing-badge {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 15px;
+  background: linear-gradient(135deg, var(--secondary-color), #3a6a8a);
+  border-radius: 20px;
+  margin-bottom: 15px;
+  width: fit-content;
+}
+
+.processing-badge.visible {
+  display: inline-flex;
+}
+
+.processing-badge.keyword-mode {
+  background: linear-gradient(135deg, var(--accent-color), #d4894e);
+}
+
+.badge-icon {
+  font-size: 1rem;
+}
+
+.badge-text {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* Category Card Enhancements */
+.category-summary {
+  color: var(--accent-color);
+  margin-bottom: 10px;
+  font-size: 0.95rem;
+}
+
+.category-details {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  border-left: 2px solid var(--background-light);
+  padding-left: 12px;
+  margin-top: 8px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar {

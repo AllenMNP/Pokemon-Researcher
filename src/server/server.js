@@ -1,9 +1,11 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { scrapeBulbapedia } = require('./scraper');
+const { categorizePokemonData, mergeLLMWithScraped } = require('./llmService');
 
 const app = express();
 const PORT = 3001;
@@ -55,14 +57,26 @@ app.get('/api/pokemon/:id', (req, res) => {
 });
 
 app.post('/api/pokemon/scrape', async (req, res) => {
-  const { url } = req.body;
+  const { url, useLLM = true, apiKey } = req.body;
   
   if (!url || !url.includes('bulbapedia.bulbagarden.net')) {
     return res.status(400).json({ error: 'Invalid Bulbapedia URL' });
   }
 
   try {
-    const scrapedData = await scrapeBulbapedia(url);
+    console.log(`Scraping Pokemon from: ${url}`);
+    let scrapedData = await scrapeBulbapedia(url);
+    
+    if (useLLM) {
+      console.log('Processing with LLM...');
+      const llmResult = await categorizePokemonData(scrapedData, apiKey);
+      if (llmResult) {
+        scrapedData = mergeLLMWithScraped(scrapedData, llmResult);
+        console.log('LLM categorization complete');
+      } else {
+        console.log('LLM unavailable, using keyword-based categorization');
+      }
+    }
     
     const data = loadPokemonData();
     
@@ -90,6 +104,12 @@ app.post('/api/pokemon/scrape', async (req, res) => {
     console.error('Scraping error:', error);
     res.status(500).json({ error: error.message || 'Failed to scrape Pokemon data' });
   }
+});
+
+app.get('/api/settings', (req, res) => {
+  res.json({
+    hasEnvApiKey: !!process.env.ANTHROPIC_API_KEY
+  });
 });
 
 app.delete('/api/pokemon/:id', (req, res) => {

@@ -34,6 +34,7 @@
           <span></span>
         </button>
         <h1>Pokemon Researcher</h1>
+        <button class="settings-btn" id="settingsBtn" title="Settings">⚙️</button>
       </header>
 
       <!-- Search Section -->
@@ -93,6 +94,12 @@
             </div>
           </div>
 
+          <!-- Processing Badge -->
+          <div class="processing-badge" id="processingBadge">
+            <span class="badge-icon">🤖</span>
+            <span class="badge-text" id="processingBadgeText">Processed with AI</span>
+          </div>
+
           <!-- View Toggle -->
           <div class="view-toggle">
             <button class="toggle-btn active" id="verboseToggle">Verbose View</button>
@@ -144,6 +151,41 @@
         <button class="btn btn-secondary" id="importMerge">Merge with Existing</button>
         <button class="btn btn-danger" id="importReplace">Replace All</button>
         <button class="btn btn-secondary" id="importCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal" id="settingsModal">
+    <div class="modal-content settings-modal">
+      <div class="modal-header">
+        <h2>Settings</h2>
+        <button class="close-modal" id="closeSettings">&times;</button>
+      </div>
+      <div class="settings-content">
+        <div class="setting-group">
+          <h3>AI Processing (Claude)</h3>
+          <p class="setting-description">Use Anthropic's Claude AI for intelligent categorization of Pokemon data.</p>
+          
+          <div class="setting-item">
+            <label class="toggle-switch">
+              <input type="checkbox" id="useLLMToggle" checked>
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="setting-label">Enable AI Categorization</span>
+          </div>
+
+          <div class="setting-item api-key-section">
+            <label for="apiKeyInput">Anthropic API Key</label>
+            <div class="api-key-input-wrapper">
+              <input type="password" id="apiKeyInput" placeholder="sk-ant-..." class="api-key-input">
+              <button class="btn btn-small" id="toggleApiKeyVisibility">Show</button>
+            </div>
+            <p class="setting-hint" id="apiKeyHint">Enter your API key or set ANTHROPIC_API_KEY in .env file</p>
+          </div>
+
+          <button class="btn btn-primary" id="saveSettingsBtn">Save Settings</button>
+        </div>
       </div>
     </div>
   </div>

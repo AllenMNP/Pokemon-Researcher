@@ -3,6 +3,12 @@ const API_BASE = 'http://localhost:3001';
 let currentPokemon = null;
 let importedData = null;
 
+// Settings
+let settings = {
+  useLLM: true,
+  apiKey: ''
+};
+
 // DOM Elements
 const sidebar = document.getElementById('sidebar');
 const hamburgerBtn = document.getElementById('hamburgerBtn');
@@ -27,9 +33,23 @@ const importMerge = document.getElementById('importMerge');
 const importReplace = document.getElementById('importReplace');
 const importCancel = document.getElementById('importCancel');
 
+// Settings Elements
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsModal = document.getElementById('settingsModal');
+const closeSettings = document.getElementById('closeSettings');
+const useLLMToggle = document.getElementById('useLLMToggle');
+const apiKeyInput = document.getElementById('apiKeyInput');
+const toggleApiKeyVisibility = document.getElementById('toggleApiKeyVisibility');
+const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+const apiKeyHint = document.getElementById('apiKeyHint');
+const processingBadge = document.getElementById('processingBadge');
+const processingBadgeText = document.getElementById('processingBadgeText');
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+  loadSettings();
   loadPokemonList();
+  checkServerSettings();
   setupEventListeners();
 });
 
@@ -54,6 +74,71 @@ function setupEventListeners() {
   importMerge.addEventListener('click', () => processImport('merge'));
   importReplace.addEventListener('click', () => processImport('replace'));
   importCancel.addEventListener('click', () => importModal.classList.remove('visible'));
+
+  // Settings event listeners
+  settingsBtn.addEventListener('click', openSettings);
+  closeSettings.addEventListener('click', closeSettingsModal);
+  settingsModal.addEventListener('click', (e) => {
+    if (e.target === settingsModal) closeSettingsModal();
+  });
+  toggleApiKeyVisibility.addEventListener('click', toggleApiKeyDisplay);
+  saveSettingsBtn.addEventListener('click', saveSettings);
+}
+
+function loadSettings() {
+  const saved = localStorage.getItem('pokemonResearcherSettings');
+  if (saved) {
+    settings = JSON.parse(saved);
+    useLLMToggle.checked = settings.useLLM;
+    apiKeyInput.value = settings.apiKey || '';
+  }
+}
+
+async function checkServerSettings() {
+  try {
+    const response = await fetch(`${API_BASE}/api/settings`);
+    const data = await response.json();
+    if (data.hasEnvApiKey) {
+      apiKeyHint.textContent = '✓ API key configured in environment';
+      apiKeyHint.classList.add('success');
+    }
+  } catch (error) {
+    console.error('Failed to check server settings:', error);
+  }
+}
+
+function openSettings() {
+  settingsModal.classList.add('visible');
+  useLLMToggle.checked = settings.useLLM;
+  apiKeyInput.value = settings.apiKey || '';
+}
+
+function closeSettingsModal() {
+  settingsModal.classList.remove('visible');
+}
+
+function toggleApiKeyDisplay() {
+  if (apiKeyInput.type === 'password') {
+    apiKeyInput.type = 'text';
+    toggleApiKeyVisibility.textContent = 'Hide';
+  } else {
+    apiKeyInput.type = 'password';
+    toggleApiKeyVisibility.textContent = 'Show';
+  }
+}
+
+function saveSettings() {
+  settings.useLLM = useLLMToggle.checked;
+  settings.apiKey = apiKeyInput.value.trim();
+  localStorage.setItem('pokemonResearcherSettings', JSON.stringify(settings));
+  closeSettingsModal();
+  
+  // Show brief confirmation
+  const originalText = saveSettingsBtn.textContent;
+  saveSettingsBtn.textContent = 'Saved!';
+  setTimeout(() => {
+    saveSettingsBtn.textContent = originalText;
+  }, 1500);
 }
 
 async function loadPokemonList() {
@@ -116,10 +201,20 @@ async function searchPokemon() {
   showLoading(true);
 
   try {
+    const requestBody = { 
+      url,
+      useLLM: settings.useLLM
+    };
+    
+    // Only send API key if user has one configured
+    if (settings.apiKey) {
+      requestBody.apiKey = settings.apiKey;
+    }
+
     const response = await fetch(`${API_BASE}/api/pokemon/scrape`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url })
+      body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
@@ -163,6 +258,16 @@ function displayPokemon(pokemon) {
     });
   }
 
+  // Processing Badge
+  processingBadge.classList.remove('visible', 'keyword-mode');
+  if (pokemon.processedWithLLM) {
+    processingBadge.classList.add('visible');
+    processingBadgeText.textContent = 'Processed with AI';
+  } else {
+    processingBadge.classList.add('visible', 'keyword-mode');
+    processingBadgeText.textContent = 'Keyword-based categorization';
+  }
+
   // Verbose View
   document.getElementById('anatomyText').textContent = pokemon.verboseData?.anatomy || '';
   document.getElementById('capabilitiesText').textContent = pokemon.verboseData?.capabilities || '';
@@ -186,13 +291,13 @@ function displayPokemon(pokemon) {
   }
 
   // Categorized View
-  renderCategorizedView(pokemon.categorizedData);
+  renderCategorizedView(pokemon.categorizedData, pokemon.processedWithLLM);
 
   // Reset to verbose view
   switchView('verbose');
 }
 
-function renderCategorizedView(categorizedData) {
+function renderCategorizedView(categorizedData, isLLMProcessed = false) {
   const grid = document.getElementById('categoriesGrid');
   grid.innerHTML = '';
 
@@ -215,15 +320,37 @@ function renderCategorizedView(categorizedData) {
 
   for (const [key, label] of Object.entries(categoryLabels)) {
     const value = categorizedData?.[key];
-    if (value && value.trim()) {
-      hasAnyCategory = true;
-      const card = document.createElement('div');
-      card.className = 'category-card';
-      card.innerHTML = `
-        <h3>${label}</h3>
-        <p>${value}</p>
-      `;
-      grid.appendChild(card);
+    if (value) {
+      // Handle both LLM format (object with summary/details) and keyword format (string)
+      let content = '';
+      let summary = '';
+      
+      if (typeof value === 'object' && value !== null) {
+        summary = value.summary || '';
+        content = value.details || value.summary || '';
+      } else if (typeof value === 'string' && value.trim()) {
+        content = value.trim();
+      }
+      
+      if (content) {
+        hasAnyCategory = true;
+        const card = document.createElement('div');
+        card.className = 'category-card';
+        
+        if (isLLMProcessed && summary && summary !== content) {
+          card.innerHTML = `
+            <h3>${label}</h3>
+            <p class="category-summary"><strong>Summary:</strong> ${summary}</p>
+            <p class="category-details">${content}</p>
+          `;
+        } else {
+          card.innerHTML = `
+            <h3>${label}</h3>
+            <p>${content}</p>
+          `;
+        }
+        grid.appendChild(card);
+      }
     }
   }
 

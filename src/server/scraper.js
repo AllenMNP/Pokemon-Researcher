@@ -4,7 +4,7 @@ const cheerio = require('cheerio');
 async function scrapeBulbapedia(url) {
   const response = await axios.get(url, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
   });
 
@@ -22,7 +22,9 @@ async function scrapeBulbapedia(url) {
       anatomy: '',
       capabilities: '',
       pokedexEntries: [],
-      fullBiologyText: ''
+      fullBiologyText: '',
+      animeInfo: '',
+      triviaInfo: ''
     },
     categorizedData: {
       maleFemalesDifferences: null,
@@ -37,66 +39,225 @@ async function scrapeBulbapedia(url) {
       rivalries: null,
       uniqueBehaviors: null,
       uniqueInformation: null
-    }
+    },
+    processedWithLLM: false
   };
 
   pokemonData.name = $('h1#firstHeading').text().replace(/\s*\(Pokémon\)/, '').trim();
 
   const infobox = $('table.roundy').first();
   
-  infobox.find('a[href*="category"]').each((i, el) => {
+  infobox.find('a[href*="Pokémon_category"]').each((i, el) => {
     const text = $(el).text().trim();
-    if (text.includes('Pokémon') && !pokemonData.category) {
-      pokemonData.category = text;
+    if (text && !pokemonData.category) {
+      pokemonData.category = text + ' Pokémon';
     }
   });
 
-  const pageText = $('body').text();
-  const ndexMatch = pageText.match(/National\s*(?:Pokédex|Dex)\s*#?\s*(\d{3,4})/i);
+  if (!pokemonData.category) {
+    const categoryMatch = $('body').text().match(/the\s+(\w+(?:\s+\w+)?)\s+Pokémon/i);
+    if (categoryMatch) {
+      pokemonData.category = categoryMatch[1] + ' Pokémon';
+    }
+  }
+
+  const ndexCell = $('a[href*="List_of_Pokémon_by_National_Pokédex_number"]').first().parent();
+  const ndexText = ndexCell.text();
+  const ndexMatch = ndexText.match(/#?(\d{3,4})/);
   if (ndexMatch) {
     pokemonData.number = ndexMatch[1].padStart(4, '0');
   }
 
-  $('a[href*="/wiki/"][title*="type"]').each((i, el) => {
-    const href = $(el).attr('href') || '';
-    const typeMatch = href.match(/\/wiki\/(\w+)_\(type\)/i);
-    if (typeMatch) {
-      const type = typeMatch[1];
-      if (!pokemonData.types.includes(type) && pokemonData.types.length < 2) {
-        pokemonData.types.push(type);
+  const typeTable = $('table').filter((i, el) => {
+    return $(el).find('a[href*="(type)"]').length > 0 && 
+           $(el).find('small:contains("Type")').length > 0;
+  }).first();
+
+  if (typeTable.length) {
+    typeTable.find('a[href*="(type)"]').each((i, el) => {
+      const href = $(el).attr('href') || '';
+      const typeMatch = href.match(/\/wiki\/(\w+)_\(type\)/i);
+      if (typeMatch && pokemonData.types.length < 2) {
+        const type = typeMatch[1];
+        if (!pokemonData.types.includes(type)) {
+          pokemonData.types.push(type);
+        }
+      }
+    });
+  }
+
+  if (pokemonData.types.length === 0) {
+    $('table.roundy a[href*="(type)"]').each((i, el) => {
+      const href = $(el).attr('href') || '';
+      const typeMatch = href.match(/\/wiki\/(\w+)_\(type\)/i);
+      if (typeMatch && pokemonData.types.length < 2) {
+        const type = typeMatch[1];
+        if (!pokemonData.types.includes(type)) {
+          pokemonData.types.push(type);
+        }
+      }
+    });
+  }
+
+  const infoboxText = infobox.text();
+  
+  const heightPatterns = [
+    /(\d+'\d+"\s*\([\d.]+\s*m\))/,
+    /(\d+'\d+")/,
+    /([\d.]+\s*m)/
+  ];
+  for (const pattern of heightPatterns) {
+    const match = infoboxText.match(pattern);
+    if (match) {
+      pokemonData.height = match[1].trim();
+      break;
+    }
+  }
+
+  const weightPatterns = [
+    /([\d.]+\s*lbs?\s*\([\d.]+\s*kg\))/i,
+    /([\d.]+\s*lbs?)/i,
+    /([\d.]+\s*kg)/i
+  ];
+  for (const pattern of weightPatterns) {
+    const match = infoboxText.match(pattern);
+    if (match) {
+      pokemonData.weight = match[1].trim();
+      break;
+    }
+  }
+
+  $('table.roundy tr').each((i, row) => {
+    const rowText = $(row).text();
+    if (rowText.toLowerCase().includes('color')) {
+      const colorLink = $(row).find('a[href*="List_of_Pokémon_by_color"]');
+      if (colorLink.length) {
+        pokemonData.pokedexColor = colorLink.text().trim();
       }
     }
   });
-
-  const heightMatch = pageText.match(/(\d+'\d+"|[\d.]+\s*m)/);
-  if (heightMatch) {
-    pokemonData.height = heightMatch[1];
-  }
-
-  const weightMatch = pageText.match(/([\d.]+\s*(?:lbs?|kg))/i);
-  if (weightMatch) {
-    pokemonData.weight = weightMatch[1];
-  }
-
-  const colorMatch = pageText.match(/Pokédex\s*color[:\s]*(\w+)/i);
-  if (colorMatch) {
-    pokemonData.pokedexColor = colorMatch[1];
-  }
 
   let biologyText = '';
   const biologyHeader = $('span#Biology').parent();
   if (biologyHeader.length) {
     let nextEl = biologyHeader.next();
-    while (nextEl.length && !nextEl.find('span.mw-headline').length) {
+    while (nextEl.length) {
+      if (nextEl.is('h2') || nextEl.find('span.mw-headline').length) {
+        break;
+      }
       if (nextEl.is('p')) {
         biologyText += nextEl.text().trim() + '\n\n';
+      }
+      if (nextEl.is('h3')) {
+        const subheading = nextEl.text().trim();
+        biologyText += `\n[${subheading}]\n`;
       }
       nextEl = nextEl.next();
     }
   }
 
   pokemonData.verboseData.fullBiologyText = biologyText.trim();
+
+  let animeText = '';
+  const animeHeader = $('span#In_the_anime').parent();
+  if (animeHeader.length) {
+    let nextEl = animeHeader.next();
+    while (nextEl.length) {
+      if (nextEl.is('h2') || (nextEl.is('h3') && !nextEl.parents('.mw-parser-output').length)) {
+        break;
+      }
+      if (nextEl.is('p')) {
+        animeText += nextEl.text().trim() + '\n\n';
+      }
+      nextEl = nextEl.next();
+    }
+  }
+  pokemonData.verboseData.animeInfo = animeText.trim();
+
+  let triviaText = '';
+  const triviaHeader = $('span#Trivia').parent();
+  if (triviaHeader.length) {
+    let nextEl = triviaHeader.next();
+    while (nextEl.length) {
+      if (nextEl.is('h2') || nextEl.find('span.mw-headline').length) {
+        break;
+      }
+      if (nextEl.is('ul')) {
+        nextEl.find('li').each((i, li) => {
+          triviaText += '• ' + $(li).text().trim() + '\n';
+        });
+      }
+      if (nextEl.is('p')) {
+        triviaText += nextEl.text().trim() + '\n\n';
+      }
+      nextEl = nextEl.next();
+    }
+  }
+  pokemonData.verboseData.triviaInfo = triviaText.trim();
+
+  const pokedexEntries = [];
   
+  $('h3').each((i, h3) => {
+    const headerText = $(h3).text();
+    if (headerText.includes('Pokédex entries') || headerText.includes('Game data')) {
+      let nextEl = $(h3).next();
+      while (nextEl.length && !nextEl.is('h2') && !nextEl.is('h3')) {
+        if (nextEl.is('table')) {
+          nextEl.find('tr').each((j, row) => {
+            const cells = $(row).find('td');
+            if (cells.length >= 2) {
+              const gameCell = $(cells[0]);
+              const entryCell = $(cells[1]);
+              
+              let game = gameCell.find('a').first().text().trim() || gameCell.text().trim();
+              game = game.replace(/\s+/g, ' ').trim();
+              
+              const entry = entryCell.text().trim();
+              
+              if (game && entry && entry.length > 15 && !entry.includes('This Pokémon was unavailable')) {
+                const exists = pokedexEntries.some(e => 
+                  e.game === game || e.entry === entry
+                );
+                if (!exists) {
+                  pokedexEntries.push({ game, entry });
+                }
+              }
+            }
+          });
+        }
+        nextEl = nextEl.next();
+      }
+    }
+  });
+
+  $('table').each((i, table) => {
+    const tableHtml = $(table).html() || '';
+    if (tableHtml.includes('Pokédex') && tableHtml.includes('entry')) {
+      $(table).find('tr').each((j, row) => {
+        const cells = $(row).find('td');
+        if (cells.length >= 1) {
+          const text = $(row).text();
+          const gameMatch = text.match(/(Red|Blue|Yellow|Gold|Silver|Crystal|Ruby|Sapphire|Emerald|FireRed|LeafGreen|Diamond|Pearl|Platinum|HeartGold|SoulSilver|Black|White|Black 2|White 2|X|Y|Omega Ruby|Alpha Sapphire|Sun|Moon|Ultra Sun|Ultra Moon|Let's Go|Sword|Shield|Brilliant Diamond|Shining Pearl|Legends: Arceus|Scarlet|Violet)/i);
+          
+          if (gameMatch) {
+            const game = gameMatch[1];
+            const entryCell = cells.length > 1 ? $(cells[1]) : $(cells[0]);
+            const entry = entryCell.text().trim();
+            
+            if (entry && entry.length > 15 && entry !== game) {
+              const exists = pokedexEntries.some(e => e.entry === entry);
+              if (!exists) {
+                pokedexEntries.push({ game, entry });
+              }
+            }
+          }
+        }
+      });
+    }
+  });
+
+  pokemonData.verboseData.pokedexEntries = pokedexEntries;
+
   const sentences = biologyText.split(/(?<=[.!?])\s+/);
   const anatomySentences = [];
   const capabilitySentences = [];
@@ -106,34 +267,21 @@ async function scrapeBulbapedia(url) {
     if (lower.includes('body') || lower.includes('head') || lower.includes('tail') || 
         lower.includes('wing') || lower.includes('eye') || lower.includes('leg') ||
         lower.includes('arm') || lower.includes('feather') || lower.includes('fur') ||
-        lower.includes('scale') || lower.includes('color') || lower.includes('appear')) {
+        lower.includes('scale') || lower.includes('beak') || lower.includes('claw') ||
+        lower.includes('horn') || lower.includes('skin') || lower.includes('appear') ||
+        lower.includes('resemble') || lower.includes('covered') || lower.includes('coloration')) {
       anatomySentences.push(sentence);
     }
     if (lower.includes('can ') || lower.includes('able to') || lower.includes('capable') ||
         lower.includes('fly') || lower.includes('swim') || lower.includes('run') ||
-        lower.includes('attack') || lower.includes('defend') || lower.includes('speed')) {
+        lower.includes('attack') || lower.includes('defend') || lower.includes('speed') ||
+        lower.includes('powerful') || lower.includes('strong') || lower.includes('fast')) {
       capabilitySentences.push(sentence);
     }
   });
 
   pokemonData.verboseData.anatomy = anatomySentences.join(' ').trim();
   pokemonData.verboseData.capabilities = capabilitySentences.join(' ').trim();
-
-  $('table').each((i, table) => {
-    const tableText = $(table).text();
-    if (tableText.includes('Pokédex entries') || tableText.includes('Game locations')) {
-      $(table).find('tr').each((j, row) => {
-        const cells = $(row).find('td');
-        if (cells.length >= 2) {
-          const game = $(cells[0]).text().trim();
-          const entry = $(cells[1]).text().trim();
-          if (game && entry && entry.length > 20) {
-            pokemonData.verboseData.pokedexEntries.push({ game, entry });
-          }
-        }
-      });
-    }
-  });
 
   pokemonData.categorizedData = categorizeBiologyData(biologyText, pokemonData.name);
 
