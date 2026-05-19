@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:3001; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:;">
+  <title>Pokemon Researcher</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Hamburger Menu Sidebar -->
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <h2>Saved Pokemon</h2>
+        <button class="close-sidebar" id="closeSidebar">&times;</button>
+      </div>
+      <div class="sidebar-actions">
+        <button class="btn btn-secondary" id="importBtn">Import JSON</button>
+        <button class="btn btn-secondary" id="exportBtn">Export JSON</button>
+        <input type="file" id="importFile" accept=".json" style="display: none;">
+      </div>
+      <div class="pokemon-list" id="pokemonList">
+        <!-- Pokemon items will be loaded here -->
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <header class="header">
+        <button class="hamburger-btn" id="hamburgerBtn">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <h1>Pokemon Researcher</h1>
+      </header>
+
+      <!-- Search Section -->
+      <section class="search-section">
+        <div class="search-container">
+          <input 
+            type="text" 
+            id="bulbapediaUrl" 
+            placeholder="Enter Bulbapedia URL (e.g., https://bulbapedia.bulbagarden.net/wiki/Corviknight_(Pokémon))"
+            class="search-input"
+          >
+          <button class="btn btn-primary" id="searchBtn">Research Pokemon</button>
+        </div>
+        <div class="loading-indicator" id="loadingIndicator">
+          <div class="spinner"></div>
+          <span>Researching Pokemon data...</span>
+        </div>
+        <div class="error-message" id="errorMessage"></div>
+      </section>
+
+      <!-- Pokemon Display Section -->
+      <section class="pokemon-display" id="pokemonDisplay">
+        <div class="empty-state" id="emptyState">
+          <div class="pokeball-icon">⚪</div>
+          <h2>No Pokemon Selected</h2>
+          <p>Enter a Bulbapedia URL above to research a Pokemon, or select one from the sidebar.</p>
+        </div>
+
+        <div class="pokemon-content" id="pokemonContent" style="display: none;">
+          <!-- Required Information -->
+          <div class="info-card required-info">
+            <h2 class="card-title">Required Information</h2>
+            <div class="pokemon-header">
+              <div class="pokemon-name-section">
+                <h1 id="pokemonName" class="pokemon-name"></h1>
+                <span id="pokemonNumber" class="pokemon-number"></span>
+              </div>
+              <div id="pokemonTypes" class="pokemon-types"></div>
+            </div>
+            <div class="info-grid">
+              <div class="info-item">
+                <label>Category</label>
+                <span id="pokemonCategory"></span>
+              </div>
+              <div class="info-item">
+                <label>Height</label>
+                <span id="pokemonHeight"></span>
+              </div>
+              <div class="info-item">
+                <label>Weight</label>
+                <span id="pokemonWeight"></span>
+              </div>
+              <div class="info-item">
+                <label>Pokedex Color</label>
+                <span id="pokemonColor"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- View Toggle -->
+          <div class="view-toggle">
+            <button class="toggle-btn active" id="verboseToggle">Verbose View</button>
+            <button class="toggle-btn" id="categorizedToggle">Categorized View</button>
+          </div>
+
+          <!-- Verbose View -->
+          <div class="view-content" id="verboseView">
+            <div class="info-card">
+              <h2 class="card-title">Pokemon Anatomy</h2>
+              <p id="anatomyText" class="info-text"></p>
+            </div>
+            <div class="info-card">
+              <h2 class="card-title">Pokemon Capabilities</h2>
+              <p id="capabilitiesText" class="info-text"></p>
+            </div>
+            <div class="info-card">
+              <h2 class="card-title">Full Biology</h2>
+              <p id="fullBiologyText" class="info-text"></p>
+            </div>
+            <div class="info-card">
+              <h2 class="card-title">Pokedex Entries</h2>
+              <div id="pokedexEntries" class="pokedex-entries"></div>
+            </div>
+          </div>
+
+          <!-- Categorized View -->
+          <div class="view-content" id="categorizedView" style="display: none;">
+            <div class="categories-grid" id="categoriesGrid">
+              <!-- Categories will be populated dynamically -->
+            </div>
+          </div>
+
+          <!-- Delete Button -->
+          <div class="action-buttons">
+            <button class="btn btn-danger" id="deleteBtn">Delete This Pokemon</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Import Modal -->
+  <div class="modal" id="importModal">
+    <div class="modal-content">
+      <h2>Import Pokemon Data</h2>
+      <p>How would you like to import the data?</p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="importMerge">Merge with Existing</button>
+        <button class="btn btn-danger" id="importReplace">Replace All</button>
+        <button class="btn btn-secondary" id="importCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
