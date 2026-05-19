@@ -2,13 +2,34 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 
 async function scrapeBulbapedia(url) {
-  const response = await axios.get(url, {
+  // Decode URL first to handle encoded characters like %C3%A9
+  const decodedUrl = decodeURIComponent(url);
+  
+  // Extract Pokemon name from URL - handle both encoded and decoded formats
+  const urlMatch = decodedUrl.match(/\/wiki\/([^/]+)_\(Pok[eé]mon\)/i);
+  if (!urlMatch) {
+    throw new Error('Invalid Bulbapedia Pokemon URL format. Expected format: .../wiki/PokemonName_(Pokémon)');
+  }
+  
+  const pokemonName = urlMatch[1].replace(/_/g, ' ');
+  
+  // Use MediaWiki API to get page content (bypasses Cloudflare)
+  const apiUrl = `https://bulbapedia.bulbagarden.net/w/api.php?action=parse&page=${encodeURIComponent(pokemonName)}_(Pokémon)&format=json&prop=text|categories&origin=*`;
+  
+  const response = await axios.get(apiUrl, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
+      'User-Agent': 'PokemonResearcher/1.0 (Educational Pokemon Research Tool)',
+      'Accept': 'application/json'
+    },
+    timeout: 30000
   });
 
-  const $ = cheerio.load(response.data);
+  if (response.data.error) {
+    throw new Error(`Page not found: ${response.data.error.info}`);
+  }
+
+  const htmlContent = response.data.parse.text['*'];
+  const $ = cheerio.load(htmlContent);
   
   const pokemonData = {
     name: '',
@@ -43,7 +64,8 @@ async function scrapeBulbapedia(url) {
     processedWithLLM: false
   };
 
-  pokemonData.name = $('h1#firstHeading').text().replace(/\s*\(Pokémon\)/, '').trim();
+  // Use the name from URL since API doesn't include page title in parsed content
+  pokemonData.name = pokemonName;
 
   const infobox = $('table.roundy').first();
   
@@ -61,11 +83,24 @@ async function scrapeBulbapedia(url) {
     }
   }
 
-  const ndexCell = $('a[href*="List_of_Pokémon_by_National_Pokédex_number"]').first().parent();
-  const ndexText = ndexCell.text();
-  const ndexMatch = ndexText.match(/#?(\d{3,4})/);
-  if (ndexMatch) {
-    pokemonData.number = ndexMatch[1].padStart(4, '0');
+  // Try multiple methods to find National Dex number
+  const ndexLink = $('a[href*="National_Pok"]').first();
+  if (ndexLink.length) {
+    const ndexText = ndexLink.parent().text();
+    const ndexMatch = ndexText.match(/#?(\d{3,4})/);
+    if (ndexMatch) {
+      pokemonData.number = ndexMatch[1].padStart(4, '0');
+    }
+  }
+  
+  // Fallback: search in page text
+  if (!pokemonData.number) {
+    const pageText = $.text();
+    const ndexMatch = pageText.match(/National\s*Dex[^\d]*#?(\d{3,4})/i) || 
+                      pageText.match(/#(\d{3,4})\s/);
+    if (ndexMatch) {
+      pokemonData.number = ndexMatch[1].padStart(4, '0');
+    }
   }
 
   const typeTable = $('table').filter((i, el) => {
