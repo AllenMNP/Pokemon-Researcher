@@ -67,107 +67,110 @@ async function scrapeBulbapedia(url) {
   // Use the name from URL since API doesn't include page title in parsed content
   pokemonData.name = pokemonName;
 
-  const infobox = $('table.roundy').first();
+  // Get page text for fallback searches
+  const pageText = $.text();
   
-  infobox.find('a[href*="Pokémon_category"]').each((i, el) => {
-    const text = $(el).text().trim();
-    if (text && !pokemonData.category) {
-      pokemonData.category = text + ' Pokémon';
+  // === POKEMON CATEGORY ===
+  // Look for the category link which appears right after the Pokemon name in the infobox
+  $('a[href*="Pok%C3%A9mon_category"], a[href*="Pokemon_category"], a[href*="Pokémon_category"]').each((i, el) => {
+    const $el = $(el);
+    const text = $el.text().trim();
+    // The category text is usually in a span inside the link, like "Seven Spot Pokémon"
+    if (text && !pokemonData.category && text.includes('Pokémon') && !text.includes('category')) {
+      pokemonData.category = text;
     }
   });
-
+  
+  // Fallback: look for pattern "XXX Pokémon" near the Pokemon name
   if (!pokemonData.category) {
-    const categoryMatch = $('body').text().match(/the\s+(\w+(?:\s+\w+)?)\s+Pokémon/i);
-    if (categoryMatch) {
+    const categoryMatch = pageText.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+Pokémon(?=\s|$)/);
+    if (categoryMatch && categoryMatch[1] !== 'the') {
       pokemonData.category = categoryMatch[1] + ' Pokémon';
     }
   }
 
-  // Try multiple methods to find National Dex number
-  const ndexLink = $('a[href*="National_Pok"]').first();
-  if (ndexLink.length) {
-    const ndexText = ndexLink.parent().text();
-    const ndexMatch = ndexText.match(/#?(\d{3,4})/);
-    if (ndexMatch) {
-      pokemonData.number = ndexMatch[1].padStart(4, '0');
+  // === NATIONAL DEX NUMBER ===
+  // Look for the Ndex number in tables
+  $('a[href*="List_of_Pok"]').each((i, el) => {
+    const text = $(el).text().trim();
+    const numMatch = text.match(/^#?(\d{3,4})$/);
+    if (numMatch && !pokemonData.number) {
+      pokemonData.number = numMatch[1].padStart(4, '0');
     }
-  }
+  });
   
-  // Fallback: search in page text
   if (!pokemonData.number) {
-    const pageText = $.text();
-    const ndexMatch = pageText.match(/National\s*Dex[^\d]*#?(\d{3,4})/i) || 
-                      pageText.match(/#(\d{3,4})\s/);
+    // Look for pattern like "#824" or "824" near "National" or "Ndex"
+    const ndexMatch = pageText.match(/(?:National|Ndex)[^\d]*#?(\d{3,4})/i);
     if (ndexMatch) {
       pokemonData.number = ndexMatch[1].padStart(4, '0');
     }
   }
 
-  const typeTable = $('table').filter((i, el) => {
-    return $(el).find('a[href*="(type)"]').length > 0 && 
-           $(el).find('small:contains("Type")').length > 0;
-  }).first();
+  // === POKEMON TYPES ===
+  // Find types from the Type row in infobox
+  $('table').each((i, table) => {
+    const tableText = $(table).text();
+    if (tableText.includes('Type') && pokemonData.types.length === 0) {
+      $(table).find('a[href*="(type)"]').each((j, el) => {
+        const href = $(el).attr('href') || '';
+        const typeMatch = href.match(/\/wiki\/(\w+)_\(type\)/i);
+        if (typeMatch && pokemonData.types.length < 2) {
+          const type = typeMatch[1];
+          if (!pokemonData.types.includes(type) && type !== 'Unknown') {
+            pokemonData.types.push(type);
+          }
+        }
+      });
+    }
+  });
 
-  if (typeTable.length) {
-    typeTable.find('a[href*="(type)"]').each((i, el) => {
-      const href = $(el).attr('href') || '';
-      const typeMatch = href.match(/\/wiki\/(\w+)_\(type\)/i);
-      if (typeMatch && pokemonData.types.length < 2) {
-        const type = typeMatch[1];
-        if (!pokemonData.types.includes(type)) {
-          pokemonData.types.push(type);
+  // === HEIGHT AND WEIGHT ===
+  // Look for Height and Weight rows specifically
+  $('table').each((i, table) => {
+    $(table).find('tr').each((j, row) => {
+      const rowText = $(row).text();
+      
+      // Height extraction
+      if (rowText.includes('Height') && !pokemonData.height) {
+        const heightMatch = rowText.match(/(\d+'\d+")[^\d]*([\d.]+\s*m)/);
+        if (heightMatch) {
+          pokemonData.height = `${heightMatch[1]} (${heightMatch[2]})`;
+        } else {
+          const simpleHeight = rowText.match(/(\d+'\d+")/);
+          if (simpleHeight) pokemonData.height = simpleHeight[1];
+        }
+      }
+      
+      // Weight extraction
+      if (rowText.includes('Weight') && !pokemonData.weight) {
+        const weightMatch = rowText.match(/([\d.]+)\s*lbs?[^\d]*([\d.]+)\s*kg/i);
+        if (weightMatch) {
+          pokemonData.weight = `${weightMatch[1]} lbs (${weightMatch[2]} kg)`;
+        } else {
+          const simpleWeight = rowText.match(/([\d.]+)\s*(?:lbs?|kg)/i);
+          if (simpleWeight) pokemonData.weight = simpleWeight[0];
         }
       }
     });
-  }
+  });
 
-  if (pokemonData.types.length === 0) {
-    $('table.roundy a[href*="(type)"]').each((i, el) => {
-      const href = $(el).attr('href') || '';
-      const typeMatch = href.match(/\/wiki\/(\w+)_\(type\)/i);
-      if (typeMatch && pokemonData.types.length < 2) {
-        const type = typeMatch[1];
-        if (!pokemonData.types.includes(type)) {
-          pokemonData.types.push(type);
-        }
-      }
-    });
-  }
-
-  const infoboxText = infobox.text();
+  // === POKEDEX COLOR ===
+  const validColors = ['Red', 'Blue', 'Yellow', 'Green', 'Black', 'Brown', 'Purple', 'Gray', 'Grey', 'White', 'Pink'];
   
-  const heightPatterns = [
-    /(\d+'\d+"\s*\([\d.]+\s*m\))/,
-    /(\d+'\d+")/,
-    /([\d.]+\s*m)/
-  ];
-  for (const pattern of heightPatterns) {
-    const match = infoboxText.match(pattern);
-    if (match) {
-      pokemonData.height = match[1].trim();
-      break;
-    }
-  }
-
-  const weightPatterns = [
-    /([\d.]+\s*lbs?\s*\([\d.]+\s*kg\))/i,
-    /([\d.]+\s*lbs?)/i,
-    /([\d.]+\s*kg)/i
-  ];
-  for (const pattern of weightPatterns) {
-    const match = infoboxText.match(pattern);
-    if (match) {
-      pokemonData.weight = match[1].trim();
-      break;
-    }
-  }
-
-  $('table.roundy tr').each((i, row) => {
-    const rowText = $(row).text();
-    if (rowText.toLowerCase().includes('color')) {
-      const colorLink = $(row).find('a[href*="List_of_Pokémon_by_color"]');
-      if (colorLink.length) {
-        pokemonData.pokedexColor = colorLink.text().trim();
+  // The color appears in a td after the "Pokédex color" link, in format: <span style="background:...">&#8195;</span> ColorName
+  $('a[href*="by_color"]').each((i, el) => {
+    if (!pokemonData.pokedexColor) {
+      const $link = $(el);
+      const $parentTd = $link.closest('td');
+      // The color is in a nested table inside this td
+      const innerText = $parentTd.text();
+      for (const color of validColors) {
+        // Check if color name appears after "Pokédex color" or "color"
+        if (innerText.includes(color)) {
+          pokemonData.pokedexColor = color;
+          return false; // break
+        }
       }
     }
   });
@@ -230,64 +233,103 @@ async function scrapeBulbapedia(url) {
   }
   pokemonData.verboseData.triviaInfo = triviaText.trim();
 
+  // === POKEDEX ENTRIES ===
   const pokedexEntries = [];
   
-  $('h3').each((i, h3) => {
-    const headerText = $(h3).text();
-    if (headerText.includes('Pokédex entries') || headerText.includes('Game data')) {
-      let nextEl = $(h3).next();
-      while (nextEl.length && !nextEl.is('h2') && !nextEl.is('h3')) {
-        if (nextEl.is('table')) {
-          nextEl.find('tr').each((j, row) => {
-            const cells = $(row).find('td');
-            if (cells.length >= 2) {
-              const gameCell = $(cells[0]);
-              const entryCell = $(cells[1]);
-              
-              let game = gameCell.find('a').first().text().trim() || gameCell.text().trim();
-              game = game.replace(/\s+/g, ' ').trim();
-              
-              const entry = entryCell.text().trim();
-              
-              if (game && entry && entry.length > 15 && !entry.includes('This Pokémon was unavailable')) {
-                const exists = pokedexEntries.some(e => 
-                  e.game === game || e.entry === entry
-                );
-                if (!exists) {
-                  pokedexEntries.push({ game, entry });
-                }
-              }
-            }
-          });
-        }
-        nextEl = nextEl.next();
+  // Find the specific Pokedex entry rows - they have structure:
+  // <th> with game name link (background color indicates game) </th>
+  // <td> with the actual entry text </td>
+  // The entry text is descriptive (30+ chars) and talks about the Pokemon
+  
+  $('th').each((i, th) => {
+    const $th = $(th);
+    const thText = $th.text().trim();
+    
+    // Check if this th contains a game name (Sword, Shield, Scarlet, Violet, etc.)
+    const gamePatterns = [
+      { pattern: /^Sword\s*$/, name: 'Sword' },
+      { pattern: /^Shield\s*$/, name: 'Shield' },
+      { pattern: /^Scarlet\s*$/, name: 'Scarlet' },
+      { pattern: /^Violet\s*$/, name: 'Violet' },
+      { pattern: /^Red\s*$/, name: 'Red' },
+      { pattern: /^Blue\s*$/, name: 'Blue' },
+      { pattern: /^Yellow\s*$/, name: 'Yellow' },
+      { pattern: /^Gold\s*$/, name: 'Gold' },
+      { pattern: /^Silver\s*$/, name: 'Silver' },
+      { pattern: /^Crystal\s*$/, name: 'Crystal' },
+      { pattern: /^Ruby\s*$/, name: 'Ruby' },
+      { pattern: /^Sapphire\s*$/, name: 'Sapphire' },
+      { pattern: /^Emerald\s*$/, name: 'Emerald' },
+      { pattern: /^FireRed\s*$/, name: 'FireRed' },
+      { pattern: /^LeafGreen\s*$/, name: 'LeafGreen' },
+      { pattern: /^Diamond\s*$/, name: 'Diamond' },
+      { pattern: /^Pearl\s*$/, name: 'Pearl' },
+      { pattern: /^Platinum\s*$/, name: 'Platinum' },
+      { pattern: /^HeartGold\s*$/, name: 'HeartGold' },
+      { pattern: /^SoulSilver\s*$/, name: 'SoulSilver' },
+      { pattern: /^Black\s*$/, name: 'Black' },
+      { pattern: /^White\s*$/, name: 'White' },
+      { pattern: /^Black 2\s*$/, name: 'Black 2' },
+      { pattern: /^White 2\s*$/, name: 'White 2' },
+      { pattern: /^X\s*$/, name: 'X' },
+      { pattern: /^Y\s*$/, name: 'Y' },
+      { pattern: /^Omega Ruby\s*$/, name: 'Omega Ruby' },
+      { pattern: /^Alpha Sapphire\s*$/, name: 'Alpha Sapphire' },
+      { pattern: /^Sun\s*$/, name: 'Sun' },
+      { pattern: /^Moon\s*$/, name: 'Moon' },
+      { pattern: /^Ultra Sun\s*$/, name: 'Ultra Sun' },
+      { pattern: /^Ultra Moon\s*$/, name: 'Ultra Moon' },
+      { pattern: /^Brilliant Diamond\s*$/, name: 'Brilliant Diamond' },
+      { pattern: /^Shining Pearl\s*$/, name: 'Shining Pearl' },
+      { pattern: /^Legends: Arceus\s*$/, name: 'Legends: Arceus' }
+    ];
+    
+    let foundGame = null;
+    for (const { pattern, name } of gamePatterns) {
+      if (pattern.test(thText)) {
+        foundGame = name;
+        break;
       }
     }
-  });
-
-  $('table').each((i, table) => {
-    const tableHtml = $(table).html() || '';
-    if (tableHtml.includes('Pokédex') && tableHtml.includes('entry')) {
-      $(table).find('tr').each((j, row) => {
-        const cells = $(row).find('td');
-        if (cells.length >= 1) {
-          const text = $(row).text();
-          const gameMatch = text.match(/(Red|Blue|Yellow|Gold|Silver|Crystal|Ruby|Sapphire|Emerald|FireRed|LeafGreen|Diamond|Pearl|Platinum|HeartGold|SoulSilver|Black|White|Black 2|White 2|X|Y|Omega Ruby|Alpha Sapphire|Sun|Moon|Ultra Sun|Ultra Moon|Let's Go|Sword|Shield|Brilliant Diamond|Shining Pearl|Legends: Arceus|Scarlet|Violet)/i);
+    
+    if (foundGame) {
+      // Look for the adjacent <td> in the same row
+      const $row = $th.closest('tr');
+      const $td = $row.find('td').first();
+      
+      if ($td.length) {
+        const entryText = $td.text().trim();
+        
+        // Valid Pokedex entry criteria:
+        // - At least 30 characters (real descriptions are longer)
+        // - Contains actual descriptive text about the Pokemon
+        // - Not a location or availability note
+        if (entryText.length >= 30 && 
+            !entryText.includes('Route') &&
+            !entryText.includes('Wild Area') &&
+            !entryText.includes('Max Raid') &&
+            !entryText.includes('Giant\'s Cap') &&
+            !entryText.includes('Lake of') &&
+            !entryText.includes('Slumbering') &&
+            !entryText.includes('Dappled Grove') &&
+            !entryText.includes('Bridge Field') &&
+            !entryText.includes('Rolling Fields') &&
+            !entryText.includes('South Lake') &&
+            !entryText.includes('Raid Battle') &&
+            !entryText.includes('Gigantamax Factor') &&
+            !entryText.includes('This Pokémon was unavailable') &&
+            !entryText.includes('Same as') &&
+            !entryText.match(/^(Trade|Evolve|Breed)/i) &&
+            // Entry should read like a description, not a location list
+            !entryText.match(/^[A-Z][a-z]+('s)?\s+(Cap|Grove|Field|Lake|Weald|Forest|Cave|Tower)/)) {
           
-          if (gameMatch) {
-            const game = gameMatch[1];
-            const entryCell = cells.length > 1 ? $(cells[1]) : $(cells[0]);
-            const entry = entryCell.text().trim();
-            
-            if (entry && entry.length > 15 && entry !== game) {
-              const exists = pokedexEntries.some(e => e.entry === entry);
-              if (!exists) {
-                pokedexEntries.push({ game, entry });
-              }
-            }
+          // Check if we already have this exact entry text
+          const exists = pokedexEntries.some(e => e.entry === entryText);
+          if (!exists) {
+            pokedexEntries.push({ game: foundGame, entry: entryText });
           }
         }
-      });
+      }
     }
   });
 
