@@ -45,6 +45,9 @@ const apiKeyHint = document.getElementById('apiKeyHint');
 const processingBadge = document.getElementById('processingBadge');
 const processingBadgeText = document.getElementById('processingBadgeText');
 
+// Header AI Toggle
+const headerAIToggle = document.getElementById('headerAIToggle');
+
 // Transcript Elements
 const transcriptsBtn = document.getElementById('transcriptsBtn');
 const transcriptsModal = document.getElementById('transcriptsModal');
@@ -65,6 +68,13 @@ const cancelDeleteTranscript = document.getElementById('cancelDeleteTranscript')
 const confirmDeleteTranscript = document.getElementById('confirmDeleteTranscript');
 const transcriptDataCard = document.getElementById('transcriptDataCard');
 const transcriptExcerpts = document.getElementById('transcriptExcerpts');
+
+// Assumptions Elements
+const assumptionsSection = document.getElementById('assumptionsSection');
+const assumptionsHeader = document.getElementById('assumptionsHeader');
+const assumptionsCount = document.getElementById('assumptionsCount');
+const assumptionsContent = document.getElementById('assumptionsContent');
+const assumptionsList = document.getElementById('assumptionsList');
 
 let transcriptToDelete = null;
 
@@ -107,6 +117,13 @@ function setupEventListeners() {
   toggleApiKeyVisibility.addEventListener('click', toggleApiKeyDisplay);
   saveSettingsBtn.addEventListener('click', saveSettings);
 
+  // Header AI Toggle
+  headerAIToggle.addEventListener('change', () => {
+    settings.useLLM = headerAIToggle.checked;
+    useLLMToggle.checked = headerAIToggle.checked;
+    localStorage.setItem('pokemonResearcherSettings', JSON.stringify(settings));
+  });
+
   // Transcript event listeners
   transcriptsBtn.addEventListener('click', openTranscriptsModal);
   closeTranscripts.addEventListener('click', closeTranscriptsModal);
@@ -125,6 +142,13 @@ function setupEventListeners() {
   deleteTranscriptModal.addEventListener('click', (e) => {
     if (e.target === deleteTranscriptModal) deleteTranscriptModal.classList.remove('visible');
   });
+
+  // Assumptions toggle
+  assumptionsHeader.addEventListener('click', () => {
+    assumptionsContent.classList.toggle('collapsed');
+    const toggle = assumptionsHeader.querySelector('.assumptions-toggle');
+    toggle.textContent = assumptionsContent.classList.contains('collapsed') ? '▶' : '▼';
+  });
 }
 
 function loadSettings() {
@@ -132,7 +156,11 @@ function loadSettings() {
   if (saved) {
     settings = JSON.parse(saved);
     useLLMToggle.checked = settings.useLLM;
+    headerAIToggle.checked = settings.useLLM;
     apiKeyInput.value = settings.apiKey || '';
+  } else {
+    // Default: AI enabled
+    headerAIToggle.checked = true;
   }
 }
 
@@ -172,6 +200,7 @@ function toggleApiKeyDisplay() {
 function saveSettings() {
   settings.useLLM = useLLMToggle.checked;
   settings.apiKey = apiKeyInput.value.trim();
+  headerAIToggle.checked = settings.useLLM; // Sync header toggle
   localStorage.setItem('pokemonResearcherSettings', JSON.stringify(settings));
   closeSettingsModal();
   
@@ -449,10 +478,32 @@ function displayPokemon(pokemon) {
   processingBadge.classList.remove('visible', 'keyword-mode');
   if (pokemon.processedWithLLM) {
     processingBadge.classList.add('visible');
-    processingBadgeText.textContent = 'Processed with AI';
+    let badgeText = 'Processed with AI';
+    if (pokemon.hasTranscriptInsights) {
+      badgeText += ' + Transcript Analysis';
+    }
+    processingBadgeText.textContent = badgeText;
   } else {
     processingBadge.classList.add('visible', 'keyword-mode');
     processingBadgeText.textContent = 'Keyword-based categorization';
+  }
+
+  // Assumptions Section
+  if (pokemon.transcriptAssumptions && pokemon.transcriptAssumptions.length > 0) {
+    assumptionsSection.style.display = 'block';
+    assumptionsCount.textContent = pokemon.transcriptAssumptions.length;
+    assumptionsList.innerHTML = pokemon.transcriptAssumptions.map(a => `
+      <li class="assumption-item">
+        <span class="assumption-original">"${escapeHtml(a.original)}"</span>
+        <span class="assumption-arrow">→</span>
+        <span class="assumption-interpreted">"${escapeHtml(a.interpreted)}"</span>
+        <span class="assumption-source">in ${escapeHtml(a.source)}</span>
+        ${a.context ? `<p class="assumption-context">"${escapeHtml(a.context)}"</p>` : ''}
+      </li>
+    `).join('');
+    assumptionsContent.classList.remove('collapsed');
+  } else {
+    assumptionsSection.style.display = 'none';
   }
 
   // Verbose View

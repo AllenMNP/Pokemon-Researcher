@@ -35,6 +35,13 @@
         </button>
         <h1>Pokemon Researcher</h1>
         <div class="header-actions">
+          <div class="ai-toggle-wrapper" title="Toggle AI Categorization">
+            <span class="ai-toggle-label">🤖 AI</span>
+            <label class="mini-toggle">
+              <input type="checkbox" id="headerAIToggle" checked>
+              <span class="mini-toggle-slider"></span>
+            </label>
+          </div>
           <button class="header-btn" id="transcriptsBtn" title="Manage Transcripts">📝 Transcripts</button>
           <button class="settings-btn" id="settingsBtn" title="Settings">⚙️</button>
         </div>
@@ -101,6 +108,22 @@
           <div class="processing-badge" id="processingBadge">
             <span class="badge-icon">🤖</span>
             <span class="badge-text" id="processingBadgeText">Processed with AI</span>
+          </div>
+
+          <!-- Assumptions Section -->
+          <div class="assumptions-section" id="assumptionsSection" style="display: none;">
+            <div class="assumptions-header" id="assumptionsHeader">
+              <span class="assumptions-icon">⚠️</span>
+              <span class="assumptions-title">AI Made Assumptions</span>
+              <span class="assumptions-count" id="assumptionsCount">0</span>
+              <span class="assumptions-toggle">▼</span>
+            </div>
+            <div class="assumptions-content" id="assumptionsContent">
+              <p class="assumptions-note">The AI interpreted the following as references to this Pokemon:</p>
+              <ul class="assumptions-list" id="assumptionsList">
+                <!-- Assumptions will be populated here -->
+              </ul>
+            </div>
           </div>
 
           <!-- View Toggle -->

@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { scrapeBulbapedia } = require('./scraper');
-const { categorizePokemonData, mergeLLMWithScraped } = require('./llmService');
+const { categorizePokemonData, mergeLLMWithScraped, analyzeTranscriptsForPokemon, mergeTranscriptInsights } = require('./llmService');
 
 const app = express();
 const PORT = 3001;
@@ -128,13 +128,27 @@ app.post('/api/pokemon/scrape', async (req, res) => {
       }
     }
     
-    // Search transcripts for this Pokemon
+    // Search transcripts for this Pokemon (basic text search for display)
     const transcriptData = searchTranscriptsForPokemon(scrapedData.name);
     if (transcriptData.length > 0) {
       console.log(`Found ${transcriptData.length} transcript(s) mentioning ${scrapedData.name}`);
       scrapedData.transcriptData = transcriptData;
     } else {
       scrapedData.transcriptData = [];
+    }
+    
+    // AI-powered transcript analysis (if enabled and transcripts exist)
+    const allTranscripts = loadTranscripts().transcripts;
+    if (useLLM && allTranscripts.length > 0) {
+      console.log('Analyzing transcripts with AI...');
+      const transcriptInsights = await analyzeTranscriptsForPokemon(scrapedData.name, allTranscripts);
+      if (transcriptInsights) {
+        scrapedData = mergeTranscriptInsights(scrapedData, transcriptInsights);
+        console.log('AI transcript analysis complete');
+        if (transcriptInsights.assumptions?.length > 0) {
+          console.log(`Made ${transcriptInsights.assumptions.length} assumption(s) about misspellings`);
+        }
+      }
     }
     
     const data = loadPokemonData();

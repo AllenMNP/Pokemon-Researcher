@@ -2,6 +2,12 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 let anthropicClient = null;
 
+// OpenAI-compatible endpoint configuration (TrueFoundry)
+const OPENAI_CONFIG = {
+  baseUrl: process.env.OPENAI_BASE_URL || 'https://truefoundry.riotgames.io/api/llm/v1',
+  model: process.env.OPENAI_MODEL || 'openai/gpt-4o-mini'
+};
+
 function initializeClient(apiKey) {
   if (apiKey) {
     anthropicClient = new Anthropic({ apiKey });
@@ -25,7 +31,22 @@ function getClient(apiKey) {
 }
 
 async function categorizePokemonData(scrapedData, apiKey = null) {
-  const client = getClient(apiKey);
+  // Try OpenAI-compatible endpoint first (TrueFoundry)
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (openaiKey) {
+    console.log('Using OpenAI-compatible endpoint (TrueFoundry)');
+    return await categorizeWithOpenAI(scrapedData, openaiKey);
+  }
+  
+  // Fall back to Anthropic
+  const key = apiKey || process.env.ANTHROPIC_API_KEY;
+  
+  if (!key) {
+    console.log('No API key available, using keyword-based categorization');
+    return null;
+  }
+
+  const client = getClient(key);
   
   if (!client) {
     console.log('No Anthropic API key available, using keyword-based categorization');
@@ -57,6 +78,57 @@ async function categorizePokemonData(scrapedData, apiKey = null) {
     return null;
   } catch (error) {
     console.error('LLM categorization error:', error.message);
+    return null;
+  }
+}
+
+async function categorizeWithOpenAI(scrapedData, apiKey) {
+  const prompt = buildCategorizationPrompt(scrapedData);
+  
+  try {
+    const response = await fetch(`${OPENAI_CONFIG.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: OPENAI_CONFIG.model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a Pokemon researcher assistant. Respond only with valid JSON.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 4096,
+        temperature: 0.3
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('OpenAI API error:', response.status, errorText);
+      return null;
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    
+    if (content) {
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return parsed;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('OpenAI categorization error:', error.message);
     return null;
   }
 }
@@ -157,6 +229,176 @@ Please categorize the above information into the following JSON structure. For e
 Respond with ONLY the JSON object, no additional text.`;
 }
 
+async function analyzeTranscriptsForPokemon(pokemonName, transcripts) {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey || !transcripts || transcripts.length === 0) {
+    return null;
+  }
+
+  // Combine all transcripts into one text block with source attribution
+  const transcriptText = transcripts.map(t => 
+    `=== TRANSCRIPT: "${t.title}" ===\n${t.content}\n`
+  ).join('\n');
+
+  const prompt = `You are a Pokemon researcher assistant. Analyze the following video transcripts to find information about the Pokemon "${pokemonName}".
+
+IMPORTANT RULES:
+1. Find ALL references to ${pokemonName}, including potential misspellings or phonetic variations (e.g., "Theevul" for "Thievul", "Orbeetl" for "Orbeetle")
+2. When you find a misspelling or variation, mark it inline as [assumed: 'original_text']
+3. For each piece of information, prefix it with [From Transcript: "Title"] to show the source
+4. Extract information into the same categories as Bulbapedia data
+5. If no relevant information is found for a category, set it to null
+6. Track all assumptions you make about misspellings
+
+=== TRANSCRIPTS ===
+${transcriptText}
+
+Respond with a JSON object in this exact format:
+{
+  "assumptions": [
+    {
+      "original": "the misspelled or variant text found",
+      "interpreted": "${pokemonName}",
+      "source": "Transcript title where found",
+      "context": "Brief surrounding context"
+    }
+  ],
+  "categories": {
+    "anatomy": {
+      "summary": "Brief description if found",
+      "details": "[From Transcript: \"Title\"] Extracted text with [assumed: 'variant'] markers if applicable"
+    } or null,
+    "capabilities": { ... } or null,
+    "maleFemalesDifferences": { ... } or null,
+    "matingHabits": { ... } or null,
+    "combatCapabilities": { ... } or null,
+    "survivalCapabilities": { ... } or null,
+    "pokemonWorldUses": { ... } or null,
+    "majorEvents": { ... } or null,
+    "survivalAdaptation": { ... } or null,
+    "preferredHabitat": { ... } or null,
+    "folklore": { ... } or null,
+    "rivalries": { ... } or null,
+    "uniqueBehaviors": { ... } or null,
+    "uniqueInformation": { ... } or null
+  }
+}
+
+Respond with ONLY the JSON object, no additional text.`;
+
+  try {
+    console.log(`Analyzing ${transcripts.length} transcript(s) for ${pokemonName}...`);
+    
+    const response = await fetch(`${OPENAI_CONFIG.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: OPENAI_CONFIG.model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a Pokemon researcher assistant. Find Pokemon references even with misspellings. Respond only with valid JSON.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 4096,
+        temperature: 0.3
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('OpenAI transcript analysis error:', response.status, errorText);
+      return null;
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    
+    if (content) {
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        console.log(`Found ${parsed.assumptions?.length || 0} assumption(s) in transcripts`);
+        return parsed;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Transcript analysis error:', error.message);
+    return null;
+  }
+}
+
+function mergeTranscriptInsights(bulbapediaData, transcriptData) {
+  if (!transcriptData || !transcriptData.categories) {
+    return bulbapediaData;
+  }
+
+  const merged = { ...bulbapediaData };
+  const transcriptCategories = transcriptData.categories;
+
+  // Add transcript assumptions to the data
+  merged.transcriptAssumptions = transcriptData.assumptions || [];
+
+  const categoryKeys = [
+    'maleFemalesDifferences', 'matingHabits', 'combatCapabilities', 
+    'survivalCapabilities', 'pokemonWorldUses', 'majorEvents',
+    'survivalAdaptation', 'preferredHabitat', 'folklore',
+    'rivalries', 'uniqueBehaviors', 'uniqueInformation'
+  ];
+
+  categoryKeys.forEach(key => {
+    const bulbapediaCategory = merged.categorizedData?.[key];
+    const transcriptCategory = transcriptCategories[key];
+
+    if (transcriptCategory) {
+      if (bulbapediaCategory) {
+        // Merge: add transcript info to existing Bulbapedia data
+        merged.categorizedData[key] = {
+          summary: bulbapediaCategory.summary,
+          details: `[From Bulbapedia] ${bulbapediaCategory.details || bulbapediaCategory.summary}\n\n${transcriptCategory.details || transcriptCategory.summary}`,
+          hasTranscriptData: true
+        };
+      } else {
+        // Only transcript data exists
+        merged.categorizedData[key] = {
+          summary: transcriptCategory.summary,
+          details: transcriptCategory.details || transcriptCategory.summary,
+          hasTranscriptData: true,
+          transcriptOnly: true
+        };
+      }
+    }
+  });
+
+  // Also merge anatomy and capabilities if present
+  if (transcriptCategories.anatomy) {
+    const existing = merged.verboseData?.anatomy || '';
+    merged.verboseData.anatomy = existing 
+      ? `[From Bulbapedia] ${existing}\n\n${transcriptCategories.anatomy.details || transcriptCategories.anatomy.summary}`
+      : transcriptCategories.anatomy.details || transcriptCategories.anatomy.summary;
+  }
+
+  if (transcriptCategories.capabilities) {
+    const existing = merged.verboseData?.capabilities || '';
+    merged.verboseData.capabilities = existing
+      ? `[From Bulbapedia] ${existing}\n\n${transcriptCategories.capabilities.details || transcriptCategories.capabilities.summary}`
+      : transcriptCategories.capabilities.details || transcriptCategories.capabilities.summary;
+  }
+
+  merged.hasTranscriptInsights = true;
+
+  return merged;
+}
+
 function mergeLLMWithScraped(scrapedData, llmData) {
   if (!llmData) {
     return scrapedData;
@@ -195,5 +437,7 @@ function mergeLLMWithScraped(scrapedData, llmData) {
 module.exports = {
   initializeClient,
   categorizePokemonData,
-  mergeLLMWithScraped
+  mergeLLMWithScraped,
+  analyzeTranscriptsForPokemon,
+  mergeTranscriptInsights
 };
