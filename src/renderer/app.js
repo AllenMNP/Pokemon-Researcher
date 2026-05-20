@@ -45,6 +45,29 @@ const apiKeyHint = document.getElementById('apiKeyHint');
 const processingBadge = document.getElementById('processingBadge');
 const processingBadgeText = document.getElementById('processingBadgeText');
 
+// Transcript Elements
+const transcriptsBtn = document.getElementById('transcriptsBtn');
+const transcriptsModal = document.getElementById('transcriptsModal');
+const closeTranscripts = document.getElementById('closeTranscripts');
+const transcriptsList = document.getElementById('transcriptsList');
+const addTranscriptBtn = document.getElementById('addTranscriptBtn');
+const transcriptFormModal = document.getElementById('transcriptFormModal');
+const closeTranscriptForm = document.getElementById('closeTranscriptForm');
+const transcriptForm = document.getElementById('transcriptForm');
+const transcriptFormTitle = document.getElementById('transcriptFormTitle');
+const transcriptId = document.getElementById('transcriptId');
+const transcriptTitle = document.getElementById('transcriptTitle');
+const transcriptSource = document.getElementById('transcriptSource');
+const transcriptContent = document.getElementById('transcriptContent');
+const cancelTranscriptForm = document.getElementById('cancelTranscriptForm');
+const deleteTranscriptModal = document.getElementById('deleteTranscriptModal');
+const cancelDeleteTranscript = document.getElementById('cancelDeleteTranscript');
+const confirmDeleteTranscript = document.getElementById('confirmDeleteTranscript');
+const transcriptDataCard = document.getElementById('transcriptDataCard');
+const transcriptExcerpts = document.getElementById('transcriptExcerpts');
+
+let transcriptToDelete = null;
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   loadSettings();
@@ -83,6 +106,25 @@ function setupEventListeners() {
   });
   toggleApiKeyVisibility.addEventListener('click', toggleApiKeyDisplay);
   saveSettingsBtn.addEventListener('click', saveSettings);
+
+  // Transcript event listeners
+  transcriptsBtn.addEventListener('click', openTranscriptsModal);
+  closeTranscripts.addEventListener('click', closeTranscriptsModal);
+  transcriptsModal.addEventListener('click', (e) => {
+    if (e.target === transcriptsModal) closeTranscriptsModal();
+  });
+  addTranscriptBtn.addEventListener('click', () => openTranscriptForm());
+  closeTranscriptForm.addEventListener('click', closeTranscriptFormModal);
+  cancelTranscriptForm.addEventListener('click', closeTranscriptFormModal);
+  transcriptFormModal.addEventListener('click', (e) => {
+    if (e.target === transcriptFormModal) closeTranscriptFormModal();
+  });
+  transcriptForm.addEventListener('submit', handleTranscriptSubmit);
+  cancelDeleteTranscript.addEventListener('click', () => deleteTranscriptModal.classList.remove('visible'));
+  confirmDeleteTranscript.addEventListener('click', handleDeleteTranscript);
+  deleteTranscriptModal.addEventListener('click', (e) => {
+    if (e.target === deleteTranscriptModal) deleteTranscriptModal.classList.remove('visible');
+  });
 }
 
 function loadSettings() {
@@ -140,6 +182,151 @@ function saveSettings() {
     saveSettingsBtn.textContent = originalText;
   }, 1500);
 }
+
+// ============ TRANSCRIPT FUNCTIONS ============
+
+async function openTranscriptsModal() {
+  transcriptsModal.classList.add('visible');
+  await loadTranscriptsList();
+}
+
+function closeTranscriptsModal() {
+  transcriptsModal.classList.remove('visible');
+}
+
+async function loadTranscriptsList() {
+  try {
+    const response = await fetch(`${API_BASE}/api/transcripts`);
+    const data = await response.json();
+    renderTranscriptsList(data.transcripts);
+  } catch (error) {
+    console.error('Failed to load transcripts:', error);
+    transcriptsList.innerHTML = '<p class="error-text">Failed to load transcripts</p>';
+  }
+}
+
+function renderTranscriptsList(transcripts) {
+  if (transcripts.length === 0) {
+    transcriptsList.innerHTML = `
+      <div class="empty-transcripts">
+        <p>No transcripts yet</p>
+        <p class="hint">Add YouTube video transcripts to enhance Pokemon research</p>
+      </div>
+    `;
+    return;
+  }
+
+  transcriptsList.innerHTML = transcripts.map(t => `
+    <div class="transcript-item" data-id="${t.id}">
+      <div class="transcript-info">
+        <h4 class="transcript-title">${escapeHtml(t.title)}</h4>
+        ${t.source ? `<a href="${escapeHtml(t.source)}" target="_blank" class="transcript-source">${escapeHtml(t.source)}</a>` : ''}
+        <p class="transcript-preview">${escapeHtml(t.content.substring(0, 150))}${t.content.length > 150 ? '...' : ''}</p>
+      </div>
+      <div class="transcript-actions">
+        <button class="btn btn-small btn-secondary" onclick="openTranscriptForm('${t.id}')">Edit</button>
+        <button class="btn btn-small btn-danger" onclick="promptDeleteTranscript('${t.id}')">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+async function openTranscriptForm(id = null) {
+  transcriptForm.reset();
+  transcriptId.value = '';
+  
+  if (id) {
+    // Edit mode
+    transcriptFormTitle.textContent = 'Edit Transcript';
+    try {
+      const response = await fetch(`${API_BASE}/api/transcripts/${id}`);
+      const transcript = await response.json();
+      transcriptId.value = transcript.id;
+      transcriptTitle.value = transcript.title;
+      transcriptSource.value = transcript.source || '';
+      transcriptContent.value = transcript.content;
+    } catch (error) {
+      console.error('Failed to load transcript:', error);
+      return;
+    }
+  } else {
+    // Add mode
+    transcriptFormTitle.textContent = 'Add Transcript';
+  }
+  
+  transcriptFormModal.classList.add('visible');
+}
+
+function closeTranscriptFormModal() {
+  transcriptFormModal.classList.remove('visible');
+  transcriptForm.reset();
+}
+
+async function handleTranscriptSubmit(e) {
+  e.preventDefault();
+  
+  const id = transcriptId.value;
+  const data = {
+    title: transcriptTitle.value.trim(),
+    source: transcriptSource.value.trim(),
+    content: transcriptContent.value.trim()
+  };
+  
+  try {
+    const url = id ? `${API_BASE}/api/transcripts/${id}` : `${API_BASE}/api/transcripts`;
+    const method = id ? 'PUT' : 'POST';
+    
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to save transcript');
+    }
+    
+    closeTranscriptFormModal();
+    await loadTranscriptsList();
+  } catch (error) {
+    console.error('Failed to save transcript:', error);
+    alert('Failed to save transcript. Please try again.');
+  }
+}
+
+function promptDeleteTranscript(id) {
+  transcriptToDelete = id;
+  deleteTranscriptModal.classList.add('visible');
+}
+
+async function handleDeleteTranscript() {
+  if (!transcriptToDelete) return;
+  
+  try {
+    const response = await fetch(`${API_BASE}/api/transcripts/${transcriptToDelete}`, {
+      method: 'DELETE'
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to delete transcript');
+    }
+    
+    deleteTranscriptModal.classList.remove('visible');
+    transcriptToDelete = null;
+    await loadTranscriptsList();
+  } catch (error) {
+    console.error('Failed to delete transcript:', error);
+    alert('Failed to delete transcript. Please try again.');
+  }
+}
+
+// ============ POKEMON FUNCTIONS ============
 
 async function loadPokemonList() {
   try {
@@ -288,6 +475,39 @@ function displayPokemon(pokemon) {
     });
   } else {
     entriesContainer.innerHTML = '<p style="color: var(--text-secondary); font-style: italic;">No Pokedex entries found</p>';
+  }
+
+  // Transcript Data
+  if (pokemon.transcriptData && pokemon.transcriptData.length > 0) {
+    transcriptDataCard.style.display = 'block';
+    transcriptExcerpts.innerHTML = '';
+    
+    pokemon.transcriptData.forEach(transcript => {
+      const transcriptEl = document.createElement('div');
+      transcriptEl.className = 'transcript-excerpt-group';
+      
+      const headerHtml = transcript.source 
+        ? `<a href="${escapeHtml(transcript.source)}" target="_blank" class="transcript-excerpt-title">${escapeHtml(transcript.title)}</a>`
+        : `<span class="transcript-excerpt-title">${escapeHtml(transcript.title)}</span>`;
+      
+      transcriptEl.innerHTML = `
+        <div class="transcript-excerpt-header">
+          ${headerHtml}
+        </div>
+        <div class="transcript-excerpt-list">
+          ${transcript.excerpts.map(excerpt => `
+            <div class="transcript-excerpt-item">
+              <span class="excerpt-quote">"</span>
+              <p>${escapeHtml(excerpt)}</p>
+              <span class="excerpt-quote">"</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+      transcriptExcerpts.appendChild(transcriptEl);
+    });
+  } else {
+    transcriptDataCard.style.display = 'none';
   }
 
   // Categorized View

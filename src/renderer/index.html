@@ -34,7 +34,10 @@
           <span></span>
         </button>
         <h1>Pokemon Researcher</h1>
-        <button class="settings-btn" id="settingsBtn" title="Settings">⚙️</button>
+        <div class="header-actions">
+          <button class="header-btn" id="transcriptsBtn" title="Manage Transcripts">📝 Transcripts</button>
+          <button class="settings-btn" id="settingsBtn" title="Settings">⚙️</button>
+        </div>
       </header>
 
       <!-- Search Section -->
@@ -124,6 +127,10 @@
               <h2 class="card-title">Pokedex Entries</h2>
               <div id="pokedexEntries" class="pokedex-entries"></div>
             </div>
+            <div class="info-card" id="transcriptDataCard" style="display: none;">
+              <h2 class="card-title">📝 From Video Transcripts</h2>
+              <div id="transcriptExcerpts" class="transcript-excerpts"></div>
+            </div>
           </div>
 
           <!-- Categorized View -->
@@ -186,6 +193,65 @@
 
           <button class="btn btn-primary" id="saveSettingsBtn">Save Settings</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Transcripts Modal -->
+  <div class="modal" id="transcriptsModal">
+    <div class="modal-content transcripts-modal">
+      <div class="modal-header">
+        <h2>📝 Video Transcripts</h2>
+        <button class="close-modal" id="closeTranscripts">&times;</button>
+      </div>
+      <div class="transcripts-content">
+        <div class="transcripts-actions">
+          <button class="btn btn-primary" id="addTranscriptBtn">+ Add Transcript</button>
+        </div>
+        <div class="transcripts-list" id="transcriptsList">
+          <!-- Transcripts will be loaded here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add/Edit Transcript Modal -->
+  <div class="modal" id="transcriptFormModal">
+    <div class="modal-content transcript-form-modal">
+      <div class="modal-header">
+        <h2 id="transcriptFormTitle">Add Transcript</h2>
+        <button class="close-modal" id="closeTranscriptForm">&times;</button>
+      </div>
+      <form id="transcriptForm" class="transcript-form">
+        <input type="hidden" id="transcriptId">
+        <div class="form-group">
+          <label for="transcriptTitle">Title *</label>
+          <input type="text" id="transcriptTitle" placeholder="e.g., Lockstin Video - Orbeetle Analysis" required>
+        </div>
+        <div class="form-group">
+          <label for="transcriptSource">YouTube URL / Video Name</label>
+          <input type="text" id="transcriptSource" placeholder="e.g., https://youtube.com/watch?v=...">
+        </div>
+        <div class="form-group">
+          <label for="transcriptContent">Transcript Content *</label>
+          <textarea id="transcriptContent" rows="15" placeholder="Paste the video transcript here..." required></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="cancelTranscriptForm">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveTranscriptBtn">Save Transcript</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Transcript Confirmation Modal -->
+  <div class="modal" id="deleteTranscriptModal">
+    <div class="modal-content">
+      <h2>Delete Transcript</h2>
+      <p>Are you sure you want to delete this transcript? This action cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="cancelDeleteTranscript">Cancel</button>
+        <button class="btn btn-danger" id="confirmDeleteTranscript">Delete</button>
       </div>
     </div>
   </div>

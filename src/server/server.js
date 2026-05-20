@@ -15,6 +15,7 @@ app.use(express.json({ limit: '50mb' }));
 
 const DATA_DIR = path.join(__dirname, '../../data');
 const POKEMON_FILE = path.join(DATA_DIR, 'pokemon.json');
+const TRANSCRIPTS_FILE = path.join(DATA_DIR, 'transcripts.json');
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -22,6 +23,10 @@ if (!fs.existsSync(DATA_DIR)) {
 
 if (!fs.existsSync(POKEMON_FILE)) {
   fs.writeFileSync(POKEMON_FILE, JSON.stringify({ pokemon: [] }, null, 2));
+}
+
+if (!fs.existsSync(TRANSCRIPTS_FILE)) {
+  fs.writeFileSync(TRANSCRIPTS_FILE, JSON.stringify({ transcripts: [] }, null, 2));
 }
 
 function loadPokemonData() {
@@ -35,6 +40,51 @@ function loadPokemonData() {
 
 function savePokemonData(data) {
   fs.writeFileSync(POKEMON_FILE, JSON.stringify(data, null, 2));
+}
+
+function loadTranscripts() {
+  try {
+    const data = fs.readFileSync(TRANSCRIPTS_FILE, 'utf-8');
+    return JSON.parse(data);
+  } catch (error) {
+    return { transcripts: [] };
+  }
+}
+
+function saveTranscripts(data) {
+  fs.writeFileSync(TRANSCRIPTS_FILE, JSON.stringify(data, null, 2));
+}
+
+function searchTranscriptsForPokemon(pokemonName) {
+  const data = loadTranscripts();
+  const results = [];
+  const searchName = pokemonName.toLowerCase();
+  
+  for (const transcript of data.transcripts) {
+    const content = transcript.content.toLowerCase();
+    if (content.includes(searchName)) {
+      // Extract excerpts containing the Pokemon name (with context)
+      const excerpts = [];
+      const sentences = transcript.content.split(/[.!?]+/);
+      
+      for (const sentence of sentences) {
+        if (sentence.toLowerCase().includes(searchName) && sentence.trim().length > 20) {
+          excerpts.push(sentence.trim() + '.');
+        }
+      }
+      
+      if (excerpts.length > 0) {
+        results.push({
+          transcriptId: transcript.id,
+          title: transcript.title,
+          source: transcript.source,
+          excerpts: excerpts.slice(0, 10) // Limit to 10 excerpts per transcript
+        });
+      }
+    }
+  }
+  
+  return results;
 }
 
 app.get('/health', (req, res) => {
@@ -78,6 +128,15 @@ app.post('/api/pokemon/scrape', async (req, res) => {
       }
     }
     
+    // Search transcripts for this Pokemon
+    const transcriptData = searchTranscriptsForPokemon(scrapedData.name);
+    if (transcriptData.length > 0) {
+      console.log(`Found ${transcriptData.length} transcript(s) mentioning ${scrapedData.name}`);
+      scrapedData.transcriptData = transcriptData;
+    } else {
+      scrapedData.transcriptData = [];
+    }
+    
     const data = loadPokemonData();
     
     const existingIndex = data.pokemon.findIndex(
@@ -110,6 +169,83 @@ app.get('/api/settings', (req, res) => {
   res.json({
     hasEnvApiKey: !!process.env.ANTHROPIC_API_KEY
   });
+});
+
+// Transcript CRUD endpoints
+app.get('/api/transcripts', (req, res) => {
+  const data = loadTranscripts();
+  res.json(data);
+});
+
+app.get('/api/transcripts/:id', (req, res) => {
+  const data = loadTranscripts();
+  const transcript = data.transcripts.find(t => t.id === req.params.id);
+  if (transcript) {
+    res.json(transcript);
+  } else {
+    res.status(404).json({ error: 'Transcript not found' });
+  }
+});
+
+app.post('/api/transcripts', (req, res) => {
+  const { title, source, content } = req.body;
+  
+  if (!title || !content) {
+    return res.status(400).json({ error: 'Title and content are required' });
+  }
+  
+  const data = loadTranscripts();
+  const newTranscript = {
+    id: uuidv4(),
+    title: title.trim(),
+    source: source?.trim() || '',
+    content: content.trim(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  
+  data.transcripts.push(newTranscript);
+  saveTranscripts(data);
+  res.json(newTranscript);
+});
+
+app.put('/api/transcripts/:id', (req, res) => {
+  const { title, source, content } = req.body;
+  const data = loadTranscripts();
+  const index = data.transcripts.findIndex(t => t.id === req.params.id);
+  
+  if (index < 0) {
+    return res.status(404).json({ error: 'Transcript not found' });
+  }
+  
+  data.transcripts[index] = {
+    ...data.transcripts[index],
+    title: title?.trim() || data.transcripts[index].title,
+    source: source?.trim() ?? data.transcripts[index].source,
+    content: content?.trim() || data.transcripts[index].content,
+    updatedAt: new Date().toISOString()
+  };
+  
+  saveTranscripts(data);
+  res.json(data.transcripts[index]);
+});
+
+app.delete('/api/transcripts/:id', (req, res) => {
+  const data = loadTranscripts();
+  const index = data.transcripts.findIndex(t => t.id === req.params.id);
+  
+  if (index >= 0) {
+    data.transcripts.splice(index, 1);
+    saveTranscripts(data);
+    res.json({ success: true });
+  } else {
+    res.status(404).json({ error: 'Transcript not found' });
+  }
+});
+
+app.get('/api/transcripts/search/:pokemonName', (req, res) => {
+  const results = searchTranscriptsForPokemon(req.params.pokemonName);
+  res.json(results);
 });
 
 app.delete('/api/pokemon/:id', (req, res) => {
